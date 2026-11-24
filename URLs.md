@@ -72,8 +72,8 @@ Este documento recopila la totalidad de las URLs y endpoints de la aplicación *
 | `DELETE` | `/api/tareas/{idTarea}` | Tareas | `ADMIN` | `204 No Content` - Tarea eliminada |
 | `GET` | `/swagger-ui.html` | Documentación | Público | `200 OK` - Interfaz Swagger UI de Springdoc |
 | `GET` | `/v3/api-docs` | Documentación | Público | `200 OK` - Especificación OpenAPI v3 en JSON |
-| `GET` | `/predicciones` | Predicciones (UI) | Público | `200 OK` - Pantalla Web Thymeleaf de estimación de demanda |
-| `POST` | `/predicciones/generar` | Predicciones (UI) | Público | `200 OK` - Genera y guarda predicción con Random Forest |
+| `GET` | `/api/predicciones/historial` | Predicciones | Autenticado | `200 OK` - Listado JSON con historial de predicciones guardadas en MySQL |
+| `POST` | `/api/predicciones/generar` | Predicciones | Autenticado | `200 OK` - JSON con proyección y métricas del modelo Random Forest |
 | `GET` | `http://localhost:8000/predecir?horizonte=SEMANAL` | Microservicio ML | Libre / Interno | `200 OK` - Entrenamiento y predicción con Random Forest |
 | `GET` | `http://localhost:8000/recomendar/{id_prod}` | Microservicio ML | Público / Interno | `200 OK` - Cálculo de productos similares con TF-IDF |
 | `GET` | `http://localhost:8000/docs` | Microservicio ML | Público | `200 OK` - Swagger UI del servicio Python |
@@ -459,17 +459,22 @@ Servicio independiente desarrollado con FastAPI y Scikit-Learn que calcula la si
 
 ---
 
-### 15. Predicciones de Demanda (Thymeleaf & Random Forest)
-Módulo para estimar cuántos pares, modelos y zapatillas se venderán la próxima semana o el próximo mes, evaluando con Random Forest Regressor y guardando los resultados en la base de datos.
+### 15. Predicciones de Demanda (REST API JSON / Random Forest)
+Módulo para estimar cuántos pares, modelos y zapatillas se venderán la próxima semana o el próximo mes, evaluando con Random Forest Regressor y persistiendo los resultados en la base de datos. Salida 100% JSON para consumo frontend (React, Angular, Vue, etc.).
 
-* **`GET /predicciones`**
-  * **Permiso:** Público / Acceso directo en navegador web.
-  * **Resultado:** `200 OK` (Renderiza la vista Thymeleaf `predicciones.html` con el historial de predicciones guardadas en MySQL).
+* **`GET /api/predicciones/historial`**
+  * **Permiso:** Autenticado (con token Bearer JWT).
+  * **Resultado:** `200 OK` con un array JSON (`List<PrediccionDemanda>`) de los últimos 20 registros persistidos en MySQL (`id_prediccion`, `id_prod`, `horizonte`, `periodo_objetivo`, `cantidad_estimada`, `stock_actual`, `deficit_estimado`, `mae_modelo`, `fecha_generacion`).
 
-* **`POST /predicciones/generar`**
-  * **Permiso:** Público / Formulario Web.
-  * **Parámetros Formulario:** `horizonte` (`SEMANAL` o `MENSUAL`, por defecto `SEMANAL`).
-  * **Resultado:** `200 OK` (Invoca al microservicio Python en `:8000/predecir`, entrena el modelo, evalúa con datos de prueba, persiste los resultados en `predicciones_demanda` y renderiza la pantalla con las métricas de error y tabla de déficit).
+* **`POST /api/predicciones/generar?horizonte=SEMANAL` (o `MENSUAL`)**
+  * **Permiso:** Autenticado (con token Bearer JWT).
+  * **Parámetros Query:** `horizonte` (`SEMANAL` o `MENSUAL`, por defecto `SEMANAL`).
+  * **Resultado:** `200 OK` con el objeto JSON `ForecastResponseDTO` conteniendo las métricas de evaluación del modelo y las estimaciones por modelo y talla.
+
+* **`GET /api/productos/{id}/similares`**
+  * **Permiso:** Autenticado.
+  * **Parámetros:** `{id}` - ID del producto (ej: `P001`).
+  * **Resultado:** `200 OK` con un array JSON (`List<ProductoSimilarDTO>`) con los 3 productos más recomendados mediante similitud de coseno (TF-IDF).
 
 * **`GET http://localhost:8000/predecir?horizonte=SEMANAL`**
   * **Permiso:** Libre / Interno.
