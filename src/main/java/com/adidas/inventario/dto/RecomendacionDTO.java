@@ -11,7 +11,6 @@ public class RecomendacionDTO {
 
     private List<ProductoSimilarDTO> recomendaciones;
 
-    // Getters y Setters
     public String getProductoBase() { return productoBase; }
     public void setProductoBase(String productoBase) { this.productoBase = productoBase; }
     public List<ProductoSimilarDTO> getRecomendaciones() { return recomendaciones; }
@@ -32,7 +31,6 @@ public class RecomendacionDTO {
         private String imagenUrl;
         private Double similitud;
 
-        // Getters y Setters
         public String getIdProd() { return idProd; }
         public void setIdProd(String idProd) { this.idProd = idProd; }
         public String getCodigo() { return codigo; }

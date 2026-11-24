@@ -1,15 +1,20 @@
 import os
-import pandas as pd
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import numpy as np
+import pandas as pd
 import pymysql
 from fastapi import FastAPI, HTTPException
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import MinMaxScaler
 
-app = FastAPI(title="Adidas Recomendador API", version="1.0")
+from forecasting import entrenar_y_predecir
 
-# Configuración de conexión a tu contenedor Docker MySQL (puerto 3307)
+app = FastAPI(title="Adidas ML API", version="1.0")
+
 DB_CONFIG = {
     "host": "127.0.0.1",
     "port": 3307,
@@ -22,7 +27,6 @@ DB_CONFIG = {
 
 
 def obtener_productos() -> pd.DataFrame:
-    """Lee el catálogo actual de MySQL sin modificar ninguna tabla."""
     query = """
         SELECT 
             p.id_prod,
@@ -47,7 +51,7 @@ def obtener_productos() -> pd.DataFrame:
 
 
 @app.get("/recomendar/{id_prod}")
-def recomendar_similares(id_prod: str, top_n: int = 3):
+async def recomendar_similares(id_prod: str, top_n: int = 3):
     df = obtener_productos()
 
     if df.empty or id_prod not in df["id_prod"].values:
@@ -56,35 +60,29 @@ def recomendar_similares(id_prod: str, top_n: int = 3):
             detail=f"El producto '{id_prod}' no existe en el catálogo."
         )
 
-    # Limpieza de tipos: Decimal a float y nulos (como imagen_url en P010-P013) a None
-    df["precio_venta"] = df["precio_venta"].astype(float)
-    df["color"] = df["color"].fillna("")
+    df = df.assign(
+        precio_venta=df["precio_venta"].astype(float),
+        color=df["color"].fillna(""),
+    )
     df = df.where(pd.notnull(df), None)
 
-    # --- INICIO DEL MODELO DE MACHINE LEARNING (~15 líneas) ---
-    # 1. Combinamos texto relevante: categoría + nombre + color
     df["texto_caracteristicas"] = (
         df["categoria"] + " " + df["nombre"] + " " + df["color"]
     )
 
-    # 2. Vectorización TF-IDF para texto y escala [0, 1] para el precio
     vectorizador = TfidfVectorizer()
     matriz_texto = vectorizador.fit_transform(df["texto_caracteristicas"]).toarray()
 
     escalador = MinMaxScaler()
     matriz_precio = escalador.fit_transform(df[["precio_venta"]])
 
-    # 3. Unimos texto + precio en un solo vector por producto y calculamos similitud
     matriz_final = np.hstack([matriz_texto, matriz_precio])
     similitudes = cosine_similarity(matriz_final)
-    # --- FIN DEL MODELO ---
 
-    # Ubicamos el índice del producto consultado y ordenamos sus vecinos más cercanos
     idx_objetivo = df.index[df["id_prod"] == id_prod][0]
     puntajes = list(enumerate(similitudes[idx_objetivo]))
     puntajes_ordenados = sorted(puntajes, key=lambda x: x[1], reverse=True)
 
-    # Filtramos el propio producto (índice 0) y tomamos los Top 3
     recomendaciones = []
     for idx, score in puntajes_ordenados:
         if idx == idx_objetivo:
@@ -98,7 +96,7 @@ def recomendar_similares(id_prod: str, top_n: int = 3):
             "precio_venta": fila["precio_venta"],
             "stock": int(fila["stock"]),
             "imagen_url": fila["imagen_url"],
-            "similitud": round(float(score) * 100, 1)  # Porcentaje legible (ej. 84.5%)
+            "similitud": round(float(score) * 100, 1)
         })
         if len(recomendaciones) == top_n:
             break
@@ -107,3 +105,11 @@ def recomendar_similares(id_prod: str, top_n: int = 3):
         "producto_base": id_prod,
         "recomendaciones": recomendaciones
     }
+
+
+@app.get("/predecir")
+async def predecir_demanda(horizonte: str = "SEMANAL"):
+    try:
+        return entrenar_y_predecir(DB_CONFIG, horizonte=horizonte)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

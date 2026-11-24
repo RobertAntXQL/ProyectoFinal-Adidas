@@ -306,6 +306,97 @@ CREATE TABLE IF NOT EXISTS tareas (
     CONSTRAINT ck_tareas_estado CHECK (estado IN ('Pendiente', 'En progreso', 'Completada'))
 ) ENGINE=InnoDB;
 
+-- =====================================================================
+-- Predicción de Demanda (Machine Learning - Random Forest)
+-- =====================================================================
+-- ¿Para qué sirve esta sección?
+-- 1. Tabla 'predicciones_demanda': Es obligatoria para que Spring Boot arranque sin
+--    errores al tener configurado 'spring.jpa.hibernate.ddl-auto=validate'. Almacena
+--    las estimaciones proyectadas (horizonte semanal/mensual, cantidad estimada,
+--    stock actual, déficit calculado y error MAE del modelo).
+-- 2. Procedimiento 'sp_poblar_historial_ventas': Puebla 8 meses (34 semanas) de
+--    ventas históricas para las 9 zapatillas del catálogo (P001 a P009). El algoritmo
+--    Random Forest requiere este historial para construir las características temporales
+--    (lags 1, 2 y 4 semanas atrás, y media móvil) y realizar el entrenamiento.
+-- =====================================================================
+
+USE adidas_app25;
+
+-- 1. Tabla para guardar las predicciones (compatible con ddl-auto=validate)
+CREATE TABLE IF NOT EXISTS predicciones_demanda (
+    id_prediccion VARCHAR(36) PRIMARY KEY,
+    id_prod VARCHAR(36) NOT NULL,
+    horizonte VARCHAR(20) NOT NULL,
+    periodo_objetivo VARCHAR(40) NOT NULL,
+    cantidad_estimada INT NOT NULL,
+    stock_actual INT NOT NULL,
+    deficit_estimado INT NOT NULL,
+    mae_modelo DECIMAL(10,2),
+    fecha_generacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_predicciones_productos
+        FOREIGN KEY (id_prod) REFERENCES productos(id_prod)
+) ENGINE=InnoDB;
+
+-- 2. Historial de 8 meses de ventas (ejecutar una sola vez si aún no lo poblaste)
+DROP PROCEDURE IF EXISTS sp_poblar_historial_ventas;
+
+DELIMITER //
+CREATE PROCEDURE sp_poblar_historial_ventas()
+BEGIN
+    DECLARE v_id_usu VARCHAR(36);
+    DECLARE v_semana INT DEFAULT 34;
+    DECLARE v_fecha DATETIME;
+    DECLARE v_id_venta VARCHAR(36);
+    DECLARE v_prod_num INT;
+    DECLARE v_id_prod VARCHAR(36);
+    DECLARE v_precio DECIMAL(10,2);
+    DECLARE v_cantidad INT;
+
+    SELECT id_usu INTO v_id_usu FROM usuarios LIMIT 1;
+
+    WHILE v_semana >= 1 DO
+        SET v_fecha = DATE_SUB(NOW(), INTERVAL v_semana WEEK);
+        SET v_id_venta = UUID();
+
+        INSERT INTO ventas (id_venta, fecha, id_usu, forma_pago, estado_pedido)
+        VALUES (v_id_venta, v_fecha, v_id_usu, 'Tarjeta', 'Confirmado');
+
+        SET v_prod_num = 1;
+        WHILE v_prod_num <= 9 DO
+            SET v_id_prod = CONCAT('P00', v_prod_num);
+            SELECT precio_venta INTO v_precio FROM productos WHERE id_prod = v_id_prod;
+
+            SET v_cantidad = GREATEST(1,
+                (CASE v_prod_num
+                    WHEN 1 THEN 7
+                    WHEN 5 THEN 6
+                    WHEN 6 THEN 5
+                    WHEN 8 THEN 5
+                    WHEN 2 THEN 4
+                    WHEN 4 THEN 4
+                    WHEN 7 THEN 3
+                    WHEN 3 THEN 3
+                    ELSE 2
+                END)
+                + (CASE WHEN MOD(v_semana, 4) = 0 THEN 2 ELSE 0 END)
+                + FLOOR(RAND() * 3) - 1
+            );
+
+            INSERT INTO ventas_detalle (id_detalle, id_venta, id_prod, cantidad, precio_unitario)
+            VALUES (UUID(), v_id_venta, v_id_prod, v_cantidad, v_precio);
+
+            SET v_prod_num = v_prod_num + 1;
+        END WHILE;
+
+        SET v_semana = v_semana - 1;
+    END WHILE;
+END //
+DELIMITER ;
+
+-- Ejecuta CALL solo si aún no tienes ventas históricas cargadas:
+-- CALL sp_poblar_historial_ventas();
+DROP PROCEDURE IF EXISTS sp_poblar_historial_ventas;
+
 exit;
 
 4. Iniciar y comprobar la base (terminal de Ubuntu, uso diario)

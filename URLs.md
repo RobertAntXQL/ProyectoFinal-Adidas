@@ -72,6 +72,9 @@ Este documento recopila la totalidad de las URLs y endpoints de la aplicación *
 | `DELETE` | `/api/tareas/{idTarea}` | Tareas | `ADMIN` | `204 No Content` - Tarea eliminada |
 | `GET` | `/swagger-ui.html` | Documentación | Público | `200 OK` - Interfaz Swagger UI de Springdoc |
 | `GET` | `/v3/api-docs` | Documentación | Público | `200 OK` - Especificación OpenAPI v3 en JSON |
+| `GET` | `/predicciones` | Predicciones (UI) | Público | `200 OK` - Pantalla Web Thymeleaf de estimación de demanda |
+| `POST` | `/predicciones/generar` | Predicciones (UI) | Público | `200 OK` - Genera y guarda predicción con Random Forest |
+| `GET` | `http://localhost:8000/predecir?horizonte=SEMANAL` | Microservicio ML | Libre / Interno | `200 OK` - Entrenamiento y predicción con Random Forest |
 | `GET` | `http://localhost:8000/recomendar/{id_prod}` | Microservicio ML | Público / Interno | `200 OK` - Cálculo de productos similares con TF-IDF |
 | `GET` | `http://localhost:8000/docs` | Microservicio ML | Público | `200 OK` - Swagger UI del servicio Python |
 
@@ -453,3 +456,47 @@ Servicio independiente desarrollado con FastAPI y Scikit-Learn que calcula la si
 * **`GET http://localhost:8000/openapi.json`**
   * **Permiso:** Libre.
   * **Resultado:** `200 OK` (JSON con el esquema OpenAPI del microservicio).
+
+---
+
+### 15. Predicciones de Demanda (Thymeleaf & Random Forest)
+Módulo para estimar cuántos pares, modelos y zapatillas se venderán la próxima semana o el próximo mes, evaluando con Random Forest Regressor y guardando los resultados en la base de datos.
+
+* **`GET /predicciones`**
+  * **Permiso:** Público / Acceso directo en navegador web.
+  * **Resultado:** `200 OK` (Renderiza la vista Thymeleaf `predicciones.html` con el historial de predicciones guardadas en MySQL).
+
+* **`POST /predicciones/generar`**
+  * **Permiso:** Público / Formulario Web.
+  * **Parámetros Formulario:** `horizonte` (`SEMANAL` o `MENSUAL`, por defecto `SEMANAL`).
+  * **Resultado:** `200 OK` (Invoca al microservicio Python en `:8000/predecir`, entrena el modelo, evalúa con datos de prueba, persiste los resultados en `predicciones_demanda` y renderiza la pantalla con las métricas de error y tabla de déficit).
+
+* **`GET http://localhost:8000/predecir?horizonte=SEMANAL`**
+  * **Permiso:** Libre / Interno.
+  * **Parámetros Query:** `horizonte` (`SEMANAL` o `MENSUAL`).
+  * **Resultado:** `200 OK` con un objeto JSON `ForecastResponseDTO`:
+    ```json
+    {
+      "algoritmo": "RandomForestRegressor (100 árboles)",
+      "horizonte": "SEMANAL",
+      "periodo_objetivo": "Próxima Semana (W48)",
+      "metricas_evaluacion": {
+        "semanas_entrenamiento": 26,
+        "semanas_prueba": 4,
+        "mae_pares": 1.45,
+        "rmse_pares": 1.82
+      },
+      "predicciones": [
+        {
+          "id_prod": "P001",
+          "codigo": "SAMBA-OG-01",
+          "nombre": "ZAPATILLAS SAMBA OG",
+          "talla": "41",
+          "stock_actual": 15,
+          "cantidad_estimada": 18,
+          "deficit_estimado": 3
+        }
+      ]
+    }
+    ```
+

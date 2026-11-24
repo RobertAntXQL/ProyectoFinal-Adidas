@@ -65,14 +65,4 @@ public class ProductoController {
 
         return productoService.actualizar(idProd, datos);
     }
-
-    @Autowired
-    private RecomendacionService recomendacionService;
-
-    @GetMapping("/{id}/similares")
-    public ResponseEntity<List<RecomendacionDTO.ProductoSimilarDTO>> listarSimilares(
-            @PathVariable("id") String idProd) {
-        List<RecomendacionDTO.ProductoSimilarDTO> similares = recomendacionService.obtenerSimilares(idProd);
-        return ResponseEntity.ok(similares);
-    }
 }
