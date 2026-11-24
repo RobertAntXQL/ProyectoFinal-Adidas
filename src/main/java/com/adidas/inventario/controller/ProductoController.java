@@ -2,6 +2,7 @@ package com.adidas.inventario.controller;
 
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,8 +16,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.adidas.inventario.dto.ProductoRequestDTO;
+import com.adidas.inventario.dto.RecomendacionDTO;
 import com.adidas.inventario.entity.Producto;
 import com.adidas.inventario.service.ProductoService;
+import com.adidas.inventario.service.RecomendacionService;
 
 import jakarta.validation.Valid;
 
@@ -61,5 +64,15 @@ public class ProductoController {
             @Valid @RequestBody ProductoRequestDTO datos) {
 
         return productoService.actualizar(idProd, datos);
+    }
+
+    @Autowired
+    private RecomendacionService recomendacionService;
+
+    @GetMapping("/{id}/similares")
+    public ResponseEntity<List<RecomendacionDTO.ProductoSimilarDTO>> listarSimilares(
+            @PathVariable("id") String idProd) {
+        List<RecomendacionDTO.ProductoSimilarDTO> similares = recomendacionService.obtenerSimilares(idProd);
+        return ResponseEntity.ok(similares);
     }
 }
